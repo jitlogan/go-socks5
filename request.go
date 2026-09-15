@@ -51,7 +51,7 @@ type AddrSpec struct {
 
 func (a AddrSpec) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("fqdn", a.FQDN)
-	enc.AddByteString("ip", a.IP)
+	enc.AddString("ip", a.IP.String())
 	enc.AddInt("port", a.Port)
 	return nil
 }
