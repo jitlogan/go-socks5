@@ -2,12 +2,11 @@ package socks5
 
 import (
 	"bufio"
+	"context"
 	"fmt"
-	"log"
 	"net"
-	"os"
 
-	"golang.org/x/net/context"
+	"go.uber.org/zap"
 )
 
 const (
@@ -44,7 +43,7 @@ type Config struct {
 
 	// Logger can be used to provide a custom log target.
 	// Defaults to stdout.
-	Logger *log.Logger
+	Logger *zap.Logger
 
 	// Optional function for dialing out
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -80,7 +79,11 @@ func New(conf *Config) (*Server, error) {
 
 	// Ensure we have a log target
 	if conf.Logger == nil {
-		conf.Logger = log.New(os.Stdout, "", log.LstdFlags)
+		var err error
+		conf.Logger, err = zap.NewDevelopment()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	server := &Server{
@@ -125,14 +128,14 @@ func (s *Server) ServeConn(conn net.Conn) error {
 	// Read the version byte
 	version := []byte{0}
 	if _, err := bufConn.Read(version); err != nil {
-		s.config.Logger.Printf("[ERR] socks: Failed to get version byte: %v", err)
+		s.config.Logger.Error("Failed to get version byte", zap.Error(err))
 		return err
 	}
 
 	// Ensure we are compatible
 	if version[0] != socks5Version {
 		err := fmt.Errorf("Unsupported SOCKS version: %v", version)
-		s.config.Logger.Printf("[ERR] socks: %v", err)
+		s.config.Logger.Error("Ensure we are compatible", zap.Error(err))
 		return err
 	}
 
@@ -140,7 +143,7 @@ func (s *Server) ServeConn(conn net.Conn) error {
 	authContext, err := s.authenticate(conn, bufConn)
 	if err != nil {
 		err = fmt.Errorf("Failed to authenticate: %v", err)
-		s.config.Logger.Printf("[ERR] socks: %v", err)
+		s.config.Logger.Error("Authenticate the connection", zap.Error(err))
 		return err
 	}
 
@@ -161,9 +164,10 @@ func (s *Server) ServeConn(conn net.Conn) error {
 	// Process the client request
 	if err := s.handleRequest(request, conn); err != nil {
 		err = fmt.Errorf("Failed to handle request: %v", err)
-		s.config.Logger.Printf("[ERR] socks: %v", err)
+		s.config.Logger.Error("Process the client request", zap.Error(err))
 		return err
 	}
+	s.config.Logger.Info("request", zap.Object("request", request))
 
 	return nil
 }

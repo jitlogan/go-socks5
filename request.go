@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/net/context"
 )
 
@@ -48,6 +49,13 @@ type AddrSpec struct {
 	Port int
 }
 
+func (a AddrSpec) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddString("fqdn", a.FQDN)
+	enc.AddByteString("ip", a.IP)
+	enc.AddInt("port", a.Port)
+	return nil
+}
+
 func (a *AddrSpec) String() string {
 	if a.FQDN != "" {
 		return fmt.Sprintf("%s (%s):%d", a.FQDN, a.IP, a.Port)
@@ -79,6 +87,16 @@ type Request struct {
 	// AddrSpec of the actual destination (might be affected by rewrite)
 	realDestAddr *AddrSpec
 	bufConn      io.Reader
+}
+
+func (r Request) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddUint8("version", r.Version)
+	enc.AddUint8("Command", r.Command)
+	enc.AddObject("auth_context", r.AuthContext)
+	enc.AddObject("remote_addr", r.RemoteAddr)
+	enc.AddObject("dest_addr", r.DestAddr)
+	enc.AddObject("real_dest_addr", r.realDestAddr)
+	return nil
 }
 
 type conn interface {

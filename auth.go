@@ -3,6 +3,8 @@ package socks5
 import (
 	"fmt"
 	"io"
+
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -28,6 +30,17 @@ type AuthContext struct {
 	// Keys depend on the used auth method.
 	// For UserPassauth contains Username
 	Payload map[string]string
+}
+
+func (a AuthContext) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddUint8("method", a.Method)
+	enc.AddObject("payload", zapcore.ObjectMarshalerFunc(func(oe zapcore.ObjectEncoder) error {
+		for k, v := range a.Payload {
+			oe.AddString(k, v)
+		}
+		return nil
+	}))
+	return nil
 }
 
 type Authenticator interface {
