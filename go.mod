@@ -1,4 +1,4 @@
-module go-socks5
+module github.com/jitlogan/go-socks5
 
 go 1.27.0
 
