@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"uuid"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -80,7 +82,12 @@ func New(conf *Config) (*Server, error) {
 	// Ensure we have a log target
 	if conf.Logger == nil {
 		var err error
-		conf.Logger, err = zap.NewDevelopment()
+		cfg := zap.NewDevelopmentConfig()
+		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		cfg.EncoderConfig.ConsoleSeparator = " "
+		cfg.DisableCaller = true
+		cfg.DisableStacktrace = true
+		conf.Logger, err = cfg.Build()
 		if err != nil {
 			return nil, err
 		}
@@ -110,6 +117,7 @@ func (s *Server) ListenAndServe(network, addr string) error {
 
 // Serve is used to serve connections from a listener
 func (s *Server) Serve(l net.Listener) error {
+	defer s.config.Logger.Sync()
 	for {
 		conn, err := l.Accept()
 		if err != nil {
@@ -117,25 +125,34 @@ func (s *Server) Serve(l net.Listener) error {
 		}
 		go s.ServeConn(conn)
 	}
-	return nil
 }
 
 // ServeConn is used to serve a single connection.
 func (s *Server) ServeConn(conn net.Conn) error {
 	defer conn.Close()
+	clientIP, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+	if err != nil {
+		fmt.Errorf("endpoint remote addr not recognized")
+	}
+
+	requestID := uuid.New()
+
+	ipCtx := context.WithValue(context.TODO(), "remote_ip", clientIP)
+	reqCtx := context.WithValue(ipCtx, "request_id", requestID)
+
 	bufConn := bufio.NewReader(conn)
 
 	// Read the version byte
 	version := []byte{0}
 	if _, err := bufConn.Read(version); err != nil {
-		s.config.Logger.Error("Failed to get version byte", zap.Error(err))
+		s.config.Logger.Error("Failed to get version byte", zap.Error(err), zap.String("ip", clientIP), zap.String("request_id", requestID.String()))
 		return err
 	}
 
 	// Ensure we are compatible
 	if version[0] != socks5Version {
 		err := fmt.Errorf("Unsupported SOCKS version: %v", version)
-		s.config.Logger.Error("Ensure we are compatible", zap.Error(err))
+		s.config.Logger.Error("Ensure we are compatible", zap.Error(err), zap.String("ip", clientIP))
 		return err
 	}
 
@@ -167,7 +184,7 @@ func (s *Server) ServeConn(conn net.Conn) error {
 		s.config.Logger.Error("Process the client request", zap.Error(err))
 		return err
 	}
-	s.config.Logger.Info("request", zap.Object("request", request))
+	s.config.Logger.Info("Client request", zap.Object("request", request))
 
 	return nil
 }

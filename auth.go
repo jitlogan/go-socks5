@@ -1,8 +1,10 @@
 package socks5
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"net"
 
 	"go.uber.org/zap/zapcore"
 )
@@ -17,8 +19,7 @@ const (
 )
 
 var (
-	UserAuthFailed  = fmt.Errorf("User authentication failed")
-	NoSupportedAuth = fmt.Errorf("No supported authentication mechanism")
+	UserAuthFailed = errors.New("User authentication failed")
 )
 
 // A Request encapsulates authentication state provided
@@ -124,6 +125,7 @@ func (a UserPassAuthenticator) Authenticate(reader io.Reader, writer io.Writer) 
 
 // authenticate is used to handle connection authentication
 func (s *Server) authenticate(conn io.Writer, bufConn io.Reader) (*AuthContext, error) {
+	clientIP, _, err := net.SplitHostPort(bufConn.RemoteAddr())
 	// Get the methods
 	methods, err := readMethods(bufConn)
 	if err != nil {
