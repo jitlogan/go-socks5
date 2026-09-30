@@ -110,8 +110,10 @@ func New(conf *Config) (*Server, error) {
 func (s *Server) ListenAndServe(network, addr string) error {
 	l, err := net.Listen(network, addr)
 	if err != nil {
+		s.config.Logger.Error("listen", zap.Error(err))
 		return err
 	}
+	s.config.Logger.Info("listen", zap.String("on", addr))
 	return s.Serve(l)
 }
 
@@ -132,27 +134,32 @@ func (s *Server) ServeConn(conn net.Conn) error {
 	defer conn.Close()
 	clientIP, _, err := net.SplitHostPort(conn.RemoteAddr().String())
 	if err != nil {
-		fmt.Errorf("endpoint remote addr not recognized")
+		return fmt.Errorf("endpoint remote addr not recognized")
 	}
 
-	requestID := uuid.New()
+	requestID := uuid.New().String()
 
-	ipCtx := context.WithValue(context.TODO(), "remote_ip", clientIP)
-	reqCtx := context.WithValue(ipCtx, "request_id", requestID)
+	ctx := context.WithValue(context.TODO(), "remote_ip", clientIP)
+	ctx = context.WithValue(ctx, "request_id", requestID)
+
+	l := s.config.Logger.With(
+		zap.String("remote_id", clientIP),
+		zap.String("request_id", requestID),
+	)
 
 	bufConn := bufio.NewReader(conn)
 
 	// Read the version byte
 	version := []byte{0}
 	if _, err := bufConn.Read(version); err != nil {
-		s.config.Logger.Error("Failed to get version byte", zap.Error(err), zap.String("ip", clientIP), zap.String("request_id", requestID.String()))
+		l.Error("Failed to get version byte", zap.Error(err))
 		return err
 	}
 
 	// Ensure we are compatible
 	if version[0] != socks5Version {
 		err := fmt.Errorf("Unsupported SOCKS version: %v", version)
-		s.config.Logger.Error("Ensure we are compatible", zap.Error(err), zap.String("ip", clientIP))
+		l.Error("Ensure we are compatible", zap.Error(err))
 		return err
 	}
 
@@ -160,7 +167,7 @@ func (s *Server) ServeConn(conn net.Conn) error {
 	authContext, err := s.authenticate(conn, bufConn)
 	if err != nil {
 		err = fmt.Errorf("Failed to authenticate: %v", err)
-		s.config.Logger.Error("Authenticate the connection", zap.Error(err))
+		l.Error("Authenticate the connection")
 		return err
 	}
 
