@@ -143,7 +143,7 @@ func (s *Server) ServeConn(conn net.Conn) error {
 	ctx = context.WithValue(ctx, "request_id", requestID)
 
 	l := s.config.Logger.With(
-		zap.String("remote_id", clientIP),
+		zap.String("remote_ip", clientIP),
 		zap.String("request_id", requestID),
 	)
 
@@ -164,7 +164,7 @@ func (s *Server) ServeConn(conn net.Conn) error {
 	}
 
 	// Authenticate the connection
-	authContext, err := s.authenticate(conn, bufConn)
+	authContext, err := s.authenticate(ctx, conn, bufConn)
 	if err != nil {
 		err = fmt.Errorf("Failed to authenticate: %v", err)
 		l.Error("Authenticate the connection")
@@ -174,7 +174,7 @@ func (s *Server) ServeConn(conn net.Conn) error {
 	request, err := NewRequest(bufConn)
 	if err != nil {
 		if err == unrecognizedAddrType {
-			if err := sendReply(conn, addrTypeNotSupported, nil); err != nil {
+			if err := sendReply(ctx, conn, addrTypeNotSupported, nil); err != nil {
 				return fmt.Errorf("Failed to send reply: %v", err)
 			}
 		}

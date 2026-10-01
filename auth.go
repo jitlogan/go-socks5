@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -124,11 +126,27 @@ func (a UserPassAuthenticator) Authenticate(reader io.Reader, writer io.Writer) 
 }
 
 // authenticate is used to handle connection authentication
-func (s *Server) authenticate(conn io.Writer, bufConn io.Reader) (*AuthContext, error) {
-	// clientIP, _, err := net.SplitHostPort(bufConn.RemoteAddr())
+func (s *Server) authenticate(ctx context.Context, conn io.Writer, bufConn io.Reader) (*AuthContext, error) {
+	fields := make([]zap.Field, 2)
+
+	if remoteIP := ctx.Value("remote_ip"); remoteIP != nil {
+		if v, ok := remoteIP.(string); ok {
+			fields = append(fields, zap.String("remote_ip", v))
+		}
+	}
+
+	if requestID := ctx.Value("request_id"); requestID != nil {
+		if v, ok := requestID.(string); ok {
+			fields = append(fields, zap.String("request_id", v))
+		}
+	}
+
+	l := s.config.Logger.With(fields...)
+
 	// Get the methods
 	methods, err := readMethods(bufConn)
 	if err != nil {
+		l.Error("read auth methods", zap.Error(err))
 		return nil, fmt.Errorf("Failed to get auth methods: %v", err)
 	}
 
