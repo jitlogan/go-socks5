@@ -73,18 +73,18 @@ func (a AuthContext) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 }
 
 type Authenticator interface {
-	Authenticate(reader io.Reader, writer io.Writer) (*AuthContext, error)
+	Authenticate(reader io.Reader, writer io.Writer, logger *zap.Logger) (*AuthContext, error)
 	GetCode() uint8
 }
 
 // NoAuthAuthenticator is used to handle the "No Authentication" mode
 type NoAuthAuthenticator struct{}
 
-func (a NoAuthAuthenticator) GetCode() AuthMethod {
-	return NoAuth
+func (a NoAuthAuthenticator) GetCode() uint8 {
+	return NoAuth.Code()
 }
 
-func (a NoAuthAuthenticator) Authenticate(reader io.Reader, writer io.Writer) (*AuthContext, error) {
+func (a NoAuthAuthenticator) Authenticate(reader io.Reader, writer io.Writer, logger *zap.Logger) (*AuthContext, error) {
 	_, err := writer.Write([]byte{socks5Version, NoAuth.Code()})
 	return &AuthContext{NoAuth.Code(), nil}, err
 }
@@ -99,7 +99,7 @@ func (a UserPassAuthenticator) GetCode() uint8 {
 	return UserPassAuth.Code()
 }
 
-func (a UserPassAuthenticator) Authenticate(reader io.Reader, writer io.Writer) (*AuthContext, error) {
+func (a UserPassAuthenticator) Authenticate(reader io.Reader, writer io.Writer, logger *zap.Logger) (*AuthContext, error) {
 	// Tell the client to use user/pass auth
 	if _, err := writer.Write([]byte{socks5Version, UserPassAuth.Code()}); err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ func (s *Server) authenticate(ctx context.Context, conn io.Writer, bufConn io.Re
 		cator, found := s.authMethods[method]
 		if found {
 			l.Info("auth select", zap.Uint8("method_code", method), zap.String("method_name", AuthMethod(method).String()))
-			return cator.Authenticate(bufConn, conn)
+			return cator.Authenticate(bufConn, conn, l)
 		}
 	}
 

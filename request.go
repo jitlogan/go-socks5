@@ -322,7 +322,7 @@ func readAddrSpec(r io.Reader) (*AddrSpec, error) {
 }
 
 // sendReply is used to send a reply message
-func sendReply(ctx context.Context, w io.Writer, resp uint8, addr *AddrSpec) error {
+func sendReply(w io.Writer, resp uint8, addr *AddrSpec) error {
 	// remoteIP := ctx.Value("remote_ip")
 	// requestID := ctx.Value("request")
 	// Format the address
