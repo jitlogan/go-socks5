@@ -5,19 +5,45 @@ import (
 	"fmt"
 	"io"
 
+	"context"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/net/context"
 )
 
 const (
-	NoAuth          = uint8(0)
-	noAcceptable    = uint8(255)
-	UserPassAuth    = uint8(2)
+	// NoAuth          = uint8(0)
+	// noAcceptable    = uint8(255)
+	// UserPassAuth    = uint8(2)
 	userAuthVersion = uint8(1)
 	authSuccess     = uint8(0)
 	authFailure     = uint8(1)
 )
+
+type AuthMethod uint8
+
+const (
+	NoAuth       = AuthMethod(0)
+	UserPassAuth = AuthMethod(2)
+	noAcceptable = AuthMethod(255)
+)
+
+func (m AuthMethod) String() string {
+	switch m {
+	case NoAuth:
+		return "no_auth"
+
+	case UserPassAuth:
+		return "user_pass_auth"
+
+	default:
+		return "no_acceptable"
+	}
+}
+
+func (m AuthMethod) Code() uint8 {
+	return uint8(m)
+}
 
 var (
 	UserAuthFailed  = errors.New("User authentication failed")
@@ -54,13 +80,13 @@ type Authenticator interface {
 // NoAuthAuthenticator is used to handle the "No Authentication" mode
 type NoAuthAuthenticator struct{}
 
-func (a NoAuthAuthenticator) GetCode() uint8 {
+func (a NoAuthAuthenticator) GetCode() AuthMethod {
 	return NoAuth
 }
 
 func (a NoAuthAuthenticator) Authenticate(reader io.Reader, writer io.Writer) (*AuthContext, error) {
-	_, err := writer.Write([]byte{socks5Version, NoAuth})
-	return &AuthContext{NoAuth, nil}, err
+	_, err := writer.Write([]byte{socks5Version, NoAuth.Code()})
+	return &AuthContext{NoAuth.Code(), nil}, err
 }
 
 // UserPassAuthenticator is used to handle username/password based
@@ -70,12 +96,12 @@ type UserPassAuthenticator struct {
 }
 
 func (a UserPassAuthenticator) GetCode() uint8 {
-	return UserPassAuth
+	return UserPassAuth.Code()
 }
 
 func (a UserPassAuthenticator) Authenticate(reader io.Reader, writer io.Writer) (*AuthContext, error) {
 	// Tell the client to use user/pass auth
-	if _, err := writer.Write([]byte{socks5Version, UserPassAuth}); err != nil {
+	if _, err := writer.Write([]byte{socks5Version, UserPassAuth.Code()}); err != nil {
 		return nil, err
 	}
 
@@ -122,7 +148,7 @@ func (a UserPassAuthenticator) Authenticate(reader io.Reader, writer io.Writer) 
 	}
 
 	// Done
-	return &AuthContext{UserPassAuth, map[string]string{"Username": string(user)}}, nil
+	return &AuthContext{UserPassAuth.Code(), map[string]string{"Username": string(user)}}, nil
 }
 
 // authenticate is used to handle connection authentication
@@ -146,7 +172,7 @@ func (s *Server) authenticate(ctx context.Context, conn io.Writer, bufConn io.Re
 	// Get the methods
 	methods, err := readMethods(bufConn)
 	if err != nil {
-		l.Error("read auth methods", zap.Error(err))
+		l.Error("auth select", zap.Error(err))
 		return nil, fmt.Errorf("Failed to get auth methods: %v", err)
 	}
 
@@ -154,18 +180,22 @@ func (s *Server) authenticate(ctx context.Context, conn io.Writer, bufConn io.Re
 	for _, method := range methods {
 		cator, found := s.authMethods[method]
 		if found {
+			l.Info("auth select", zap.Uint8("method_code", method), zap.String("method_name", AuthMethod(method).String()))
 			return cator.Authenticate(bufConn, conn)
 		}
 	}
 
 	// No usable method found
-	return nil, noAcceptableAuth(conn)
+	// return nil, noAcceptableAuth(conn)
+	err = noAcceptableAuth(conn)
+	l.Error("auth select", zap.Error(err))
+	return nil, err
 }
 
 // noAcceptableAuth is used to handle when we have no eligible
 // authentication mechanism
 func noAcceptableAuth(conn io.Writer) error {
-	conn.Write([]byte{socks5Version, noAcceptable})
+	conn.Write([]byte{socks5Version, noAcceptable.Code()})
 	return NoSupportedAuth
 }
 
