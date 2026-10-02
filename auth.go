@@ -71,7 +71,7 @@ func (a AuthContext) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 }
 
 type Authenticator interface {
-	Authenticate(reader io.Reader, writer io.Writer, logger *zap.Logger) (*AuthContext, error)
+	Authenticate(reader io.Reader, writer io.Writer) (*AuthContext, error)
 	GetCode() uint8
 }
 
@@ -82,7 +82,7 @@ func (a NoAuthAuthenticator) GetCode() uint8 {
 	return NoAuth.Code()
 }
 
-func (a NoAuthAuthenticator) Authenticate(reader io.Reader, writer io.Writer, logger *zap.Logger) (*AuthContext, error) {
+func (a NoAuthAuthenticator) Authenticate(reader io.Reader, writer io.Writer) (*AuthContext, error) {
 	_, err := writer.Write([]byte{socks5Version, NoAuth.Code()})
 	return &AuthContext{NoAuth.Code(), nil}, err
 }
@@ -97,7 +97,7 @@ func (a UserPassAuthenticator) GetCode() uint8 {
 	return UserPassAuth.Code()
 }
 
-func (a UserPassAuthenticator) Authenticate(reader io.Reader, writer io.Writer, logger *zap.Logger) (*AuthContext, error) {
+func (a UserPassAuthenticator) Authenticate(reader io.Reader, writer io.Writer) (*AuthContext, error) {
 	// Tell the client to use user/pass auth
 	if _, err := writer.Write([]byte{socks5Version, UserPassAuth.Code()}); err != nil {
 		return nil, err
@@ -155,7 +155,6 @@ func (s *Server) authenticate(conn io.Writer, bufConn io.Reader, logger *zap.Log
 	// Get the methods
 	methods, err := readMethods(bufConn)
 	if err != nil {
-		logger.Error("auth select", zap.Error(err))
 		return nil, fmt.Errorf("Failed to get auth methods: %v", err)
 	}
 
@@ -164,7 +163,7 @@ func (s *Server) authenticate(conn io.Writer, bufConn io.Reader, logger *zap.Log
 		cator, found := s.authMethods[method]
 		if found {
 			logger.Info("auth select", zap.Uint8("method_code", method), zap.String("method_name", AuthMethod(method).String()))
-			return cator.Authenticate(bufConn, conn, logger)
+			return cator.Authenticate(bufConn, conn)
 		}
 	}
 
