@@ -15,5 +15,7 @@ func main() {
 		panic(err)
 	}
 
-	server.ListenAndServe("tcp", ":8080")
+	if err := server.ListenAndServe("tcp", ":8080"); err != nil {
+		panic(err)
+	}
 }
