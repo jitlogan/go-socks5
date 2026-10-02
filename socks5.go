@@ -110,7 +110,6 @@ func New(conf *Config) (*Server, error) {
 func (s *Server) ListenAndServe(network, addr string) error {
 	l, err := net.Listen(network, addr)
 	if err != nil {
-		s.config.Logger.Error("listen", zap.Error(err))
 		return err
 	}
 	s.config.Logger.Info("listen", zap.String("on", addr))
@@ -125,49 +124,47 @@ func (s *Server) Serve(l net.Listener) error {
 		if err != nil {
 			return err
 		}
-		go s.ServeConn(conn)
+		remoteIP, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+		if err != nil {
+			s.config.Logger.Error("accept connection", zap.Error(err))
+		}
+		requestID := uuid.New().String()
+
+		l := s.config.Logger.With(
+			zap.String("remote_ip", remoteIP),
+			zap.String("request_id", requestID),
+		)
+
+		// go s.ServeConn(conn)
+		go func(conn net.Conn, l *zap.Logger) {
+			defer conn.Close()
+			if err := s.ServeConn(conn, l); err != nil {
+				l.Error("serve connection", zap.Error(err))
+			}
+		}(conn, l)
 	}
 }
 
 // ServeConn is used to serve a single connection.
-func (s *Server) ServeConn(conn net.Conn) error {
-	defer conn.Close()
-	clientIP, _, err := net.SplitHostPort(conn.RemoteAddr().String())
-	if err != nil {
-		return fmt.Errorf("endpoint remote addr not recognized")
-	}
-
-	requestID := uuid.New().String()
-
-	ctx := context.WithValue(context.TODO(), "remote_ip", clientIP)
-	ctx = context.WithValue(ctx, "request_id", requestID)
-
-	l := s.config.Logger.With(
-		zap.String("remote_ip", clientIP),
-		zap.String("request_id", requestID),
-	)
-
+func (s *Server) ServeConn(conn net.Conn, logger *zap.Logger) error {
 	bufConn := bufio.NewReader(conn)
 
 	// Read the version byte
 	version := []byte{0}
 	if _, err := bufConn.Read(version); err != nil {
-		l.Error("Failed to get version byte", zap.Error(err))
-		return err
+		return fmt.Errorf("error reading version byte: %w", err)
 	}
 
 	// Ensure we are compatible
 	if version[0] != socks5Version {
-		err := fmt.Errorf("Unsupported SOCKS version: %v", version)
-		l.Error("Ensure we are compatible", zap.Error(err))
-		return err
+		return fmt.Errorf("Unsupported SOCKS version: %v", version)
+		// return err
 	}
 
 	// Authenticate the connection
-	authContext, err := s.authenticate(ctx, conn, bufConn)
+	authContext, err := s.authenticate(conn, bufConn, logger)
 	if err != nil {
 		err = fmt.Errorf("Failed to authenticate: %v", err)
-		l.Error("Authenticate the connection")
 		return err
 	}
 

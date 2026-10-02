@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 
-	"context"
-
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -152,27 +150,12 @@ func (a UserPassAuthenticator) Authenticate(reader io.Reader, writer io.Writer, 
 }
 
 // authenticate is used to handle connection authentication
-func (s *Server) authenticate(ctx context.Context, conn io.Writer, bufConn io.Reader) (*AuthContext, error) {
-	fields := make([]zap.Field, 2)
-
-	if remoteIP := ctx.Value("remote_ip"); remoteIP != nil {
-		if v, ok := remoteIP.(string); ok {
-			fields = append(fields, zap.String("remote_ip", v))
-		}
-	}
-
-	if requestID := ctx.Value("request_id"); requestID != nil {
-		if v, ok := requestID.(string); ok {
-			fields = append(fields, zap.String("request_id", v))
-		}
-	}
-
-	l := s.config.Logger.With(fields...)
+func (s *Server) authenticate(conn io.Writer, bufConn io.Reader, logger *zap.Logger) (*AuthContext, error) {
 
 	// Get the methods
 	methods, err := readMethods(bufConn)
 	if err != nil {
-		l.Error("auth select", zap.Error(err))
+		logger.Error("auth select", zap.Error(err))
 		return nil, fmt.Errorf("Failed to get auth methods: %v", err)
 	}
 
@@ -180,16 +163,14 @@ func (s *Server) authenticate(ctx context.Context, conn io.Writer, bufConn io.Re
 	for _, method := range methods {
 		cator, found := s.authMethods[method]
 		if found {
-			l.Info("auth select", zap.Uint8("method_code", method), zap.String("method_name", AuthMethod(method).String()))
-			return cator.Authenticate(bufConn, conn, l)
+			logger.Info("auth select", zap.Uint8("method_code", method), zap.String("method_name", AuthMethod(method).String()))
+			return cator.Authenticate(bufConn, conn, logger)
 		}
 	}
 
 	// No usable method found
 	// return nil, noAcceptableAuth(conn)
-	err = noAcceptableAuth(conn)
-	l.Error("auth select", zap.Error(err))
-	return nil, err
+	return nil, noAcceptableAuth(conn)
 }
 
 // noAcceptableAuth is used to handle when we have no eligible
